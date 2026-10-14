@@ -58,6 +58,7 @@ import { useEnvironmentQuery } from "../../state/query";
 import { EMPTY_SERVER_PROVIDERS, serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { WorktreeBaseBranchPicker } from "../WorktreeBaseBranchPicker";
+import { usePaginatedBranches } from "../../state/queries";
 import { EnvironmentMachineIcon } from "../EnvironmentMachineIcon";
 import { AuthOrchestrationOperateScope } from "@t3tools/contracts";
 import { readEnvironmentScope } from "~/state/session";
@@ -68,6 +69,7 @@ import {
   scheduleFromDraft,
   scheduledTaskDefaultModel,
   taskToDraft,
+  defaultWorktreeBaseRef,
   type DraftState,
   type ScheduleMode,
   type WorkspaceMode,
@@ -125,7 +127,8 @@ const EMPTY_DRAFT: DraftState = {
   projectId: "",
   threadId: "",
   workspaceMode: "worktree",
-  baseRef: "main",
+  // Empty until chosen: the form shows the project's default branch instead.
+  baseRef: "",
   startFromOrigin: true,
   existingWorktreePath: "",
   modelKey: "",
@@ -820,6 +823,14 @@ function ScheduledTaskEditorDialog({
     : task;
   const selectedProjectId = draft.projectId || projects[0]?.id || "";
   const selectedProject = projects.find((project) => project.id === selectedProjectId);
+  // Like a new worktree thread, start from the repo's default branch
+  // (origin/HEAD), else the checked-out branch, so repos without `main` work.
+  const projectRefs = usePaginatedBranches({
+    environmentId,
+    cwd: selectedProject?.workspaceRoot ?? null,
+    query: "",
+  }).refs;
+  const baseRef = draft.baseRef || defaultWorktreeBaseRef(projectRefs);
   // The task runs in selectedProject, so its model picker should reflect that
   // project's effective enablement, not just the machine's.
   const instanceEntries = useMemo(
@@ -925,7 +936,7 @@ function ScheduledTaskEditorDialog({
           ? { type: "existing_worktree", worktreePath: draft.existingWorktreePath.trim() }
           : {
               type: "worktree",
-              baseRef: draft.baseRef.trim() || "main",
+              baseRef: baseRef.trim() || "main",
               startFromOrigin: draft.startFromOrigin,
             };
     const input: ScheduledTaskUpsertInput = {
@@ -991,7 +1002,7 @@ function ScheduledTaskEditorDialog({
                     projectId: "",
                     modelKey: "",
                     baseModelSelection: null,
-                    baseRef: "main",
+                    baseRef: "",
                     startFromOrigin: true,
                     existingWorktreePath: "",
                   }));
@@ -1091,7 +1102,7 @@ function ScheduledTaskEditorDialog({
                   id="scheduled-task-base-ref"
                   environmentId={environmentId}
                   cwd={selectedProject?.workspaceRoot ?? null}
-                  value={draft.baseRef}
+                  value={baseRef}
                   onValueChange={(baseRef) => setDraft((current) => ({ ...current, baseRef }))}
                   startFromOrigin={draft.startFromOrigin}
                   onStartFromOriginChange={(startFromOrigin) =>
