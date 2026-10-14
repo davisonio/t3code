@@ -594,8 +594,10 @@ function TaskForm({
         ? (projects.find((project) => project.id === draft.projectId)?.workspaceRoot ?? null)
         : null,
     query: "",
-  }).refs;
-  const baseRef = draft.baseRef || defaultWorktreeBaseRef(projectRefs);
+  });
+  const baseRef = draft.baseRef || defaultWorktreeBaseRef(projectRefs.refs);
+  // Wait for the first answer so a save cannot fall back to `main` too early.
+  const baseRefPending = projectRefs.isPending && projectRefs.data === null;
   const config = useEnvironmentServerConfig(environmentId);
   const modelOptions = useMemo(
     () => buildModelOptions(config, null, undefined, draft.projectId),
@@ -631,7 +633,8 @@ function TaskForm({
       saving ||
       dictationPending ||
       taskMissing ||
-      environmentUnavailable
+      environmentUnavailable ||
+      baseRefPending
     )
       return;
     // Signatures are edited on desktop and web; send the task's current one,
@@ -1027,10 +1030,16 @@ function TaskForm({
       <Pressable
         accessibilityRole="button"
         accessibilityState={{
-          disabled: saving || dictationPending || taskMissing || environmentUnavailable,
+          disabled:
+            saving || dictationPending || taskMissing || environmentUnavailable || baseRefPending,
         }}
         disabled={
-          !canOperate || saving || dictationPending || taskMissing || environmentUnavailable
+          !canOperate ||
+          saving ||
+          dictationPending ||
+          taskMissing ||
+          environmentUnavailable ||
+          baseRefPending
         }
         onPress={() => void save()}
         className="min-h-12 items-center justify-center rounded-[14px] bg-primary px-4 disabled:opacity-50"

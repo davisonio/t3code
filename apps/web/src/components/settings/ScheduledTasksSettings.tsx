@@ -831,8 +831,10 @@ function ScheduledTaskEditorDialog({
         ? (selectedProject?.workspaceRoot ?? null)
         : null,
     query: "",
-  }).refs;
-  const baseRef = draft.baseRef || defaultWorktreeBaseRef(projectRefs);
+  });
+  const baseRef = draft.baseRef || defaultWorktreeBaseRef(projectRefs.refs);
+  // Wait for the first answer so a save cannot fall back to `main` too early.
+  const baseRefPending = projectRefs.isPending && projectRefs.data === null;
   // The task runs in selectedProject, so its model picker should reflect that
   // project's effective enablement, not just the machine's.
   const instanceEntries = useMemo(
@@ -881,7 +883,8 @@ function ScheduledTaskEditorDialog({
       saving ||
       editingTaskMissing ||
       !connected ||
-      tasksQuery.data === null
+      tasksQuery.data === null ||
+      baseRefPending
     )
       return;
     const selection = activeSelection;
@@ -1388,7 +1391,14 @@ function ScheduledTaskEditorDialog({
           </DialogClose>
           <Button
             size="sm"
-            disabled={!canOperate || saving || editingTaskMissing || !connected || !tasksQuery.data}
+            disabled={
+              !canOperate ||
+              saving ||
+              editingTaskMissing ||
+              !connected ||
+              !tasksQuery.data ||
+              baseRefPending
+            }
             onClick={() => void submit()}
           >
             {draft.editingId ? "Save task" : "Create task"}
