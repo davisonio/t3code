@@ -59,6 +59,7 @@ import { EMPTY_SERVER_PROVIDERS, serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { WorktreeBaseBranchPicker } from "../WorktreeBaseBranchPicker";
 import { usePaginatedBranches } from "../../state/queries";
+import { defaultWorktreeBaseRef } from "@t3tools/client-runtime/scheduled-task-base-ref";
 import { EnvironmentMachineIcon } from "../EnvironmentMachineIcon";
 import { AuthOrchestrationOperateScope } from "@t3tools/contracts";
 import { readEnvironmentScope } from "~/state/session";
@@ -69,7 +70,6 @@ import {
   scheduleFromDraft,
   scheduledTaskDefaultModel,
   taskToDraft,
-  defaultWorktreeBaseRef,
   type DraftState,
   type ScheduleMode,
   type WorkspaceMode,
@@ -823,8 +823,7 @@ function ScheduledTaskEditorDialog({
     : task;
   const selectedProjectId = draft.projectId || projects[0]?.id || "";
   const selectedProject = projects.find((project) => project.id === selectedProjectId);
-  // Like a new worktree thread, start from the repo's default branch
-  // (origin/HEAD), else the checked-out branch, so repos without `main` work.
+  // Until a branch is chosen, show and save the project's default branch.
   const projectRefs = usePaginatedBranches({
     environmentId,
     cwd: selectedProject?.workspaceRoot ?? null,

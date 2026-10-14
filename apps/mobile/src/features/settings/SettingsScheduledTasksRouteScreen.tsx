@@ -51,12 +51,14 @@ import { ScreenScrollView as ScrollView } from "../../components/ScreenScrollVie
 import { SegmentedControl } from "../../components/SegmentedControl";
 import { ThemedSwitch } from "../../components/ThemedSwitch";
 import { webhookAddress } from "@t3tools/client-runtime/webhook-address";
+import { defaultWorktreeBaseRef } from "@t3tools/client-runtime/scheduled-task-base-ref";
 import { tryCopyTextWithHaptic } from "../../lib/copyTextWithHaptic";
 import { usePreparedConnection } from "../../state/session";
 import { buildModelOptions } from "../../lib/modelOptions";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { useProjects, useEnvironmentServerConfig } from "../../state/entities";
 import { useEnvironmentQuery } from "../../state/query";
+import { usePaginatedBranches } from "../../state/queries";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { withNativeGlassHeaderItem } from "../layout/native-glass-header-items";
@@ -584,6 +586,13 @@ function TaskForm({
     serverEnvironment.scheduledTasksLive({ environmentId, input: {} }),
   );
   const projects = useProjects().filter((project) => project.environmentId === environmentId);
+  // Until a branch is chosen, show and save the project's default branch.
+  const projectRefs = usePaginatedBranches({
+    environmentId,
+    cwd: projects.find((project) => project.id === draft.projectId)?.workspaceRoot ?? null,
+    query: "",
+  }).refs;
+  const baseRef = draft.baseRef || defaultWorktreeBaseRef(projectRefs);
   const config = useEnvironmentServerConfig(environmentId);
   const modelOptions = useMemo(
     () => buildModelOptions(config, null, undefined, draft.projectId),
@@ -674,7 +683,7 @@ function TaskForm({
             ? { type: "existing_worktree", worktreePath: draft.checkoutPath.trim() }
             : {
                 type: "worktree",
-                baseRef: draft.baseRef.trim() || "main",
+                baseRef: baseRef.trim() || "main",
                 startFromOrigin: draft.startFromOrigin,
               },
       runtimeMode: draft.runtimeMode,
@@ -836,7 +845,7 @@ function TaskForm({
           <PickerRow
             label="Base branch"
             value={resolveNewTaskBranchLabel({
-              branchName: draft.baseRef,
+              branchName: baseRef,
               startFromOrigin: draft.startFromOrigin,
               workspaceMode: "worktree",
             })}

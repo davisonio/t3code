@@ -8,7 +8,6 @@ import {
   type RuntimeMode,
   type ProviderInteractionMode,
   type ServerSettings,
-  type VcsRef,
 } from "@t3tools/contracts";
 import { parseMaxDeliveryAge } from "@t3tools/client-runtime/scheduled-task-webhook";
 
@@ -204,14 +203,4 @@ export function scheduledTaskDefaultModel(
   );
   const fallback = models.find(({ model }) => model.isDefault) ?? models[0];
   return fallback ? { instanceId: fallback.instanceId, model: fallback.model.slug } : null;
-}
-
-/**
- * The base branch a new worktree task starts from when none is chosen: the
- * repo's default branch (origin/HEAD), else the checked-out branch.
- */
-export function defaultWorktreeBaseRef(
-  refs: ReadonlyArray<Pick<VcsRef, "name" | "isDefault" | "current">>,
-): string {
-  return (refs.find((ref) => ref.isDefault) ?? refs.find((ref) => ref.current))?.name ?? "";
 }
