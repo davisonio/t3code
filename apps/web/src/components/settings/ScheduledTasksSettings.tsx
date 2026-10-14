@@ -127,7 +127,7 @@ const EMPTY_DRAFT: DraftState = {
   projectId: "",
   threadId: "",
   workspaceMode: "worktree",
-  // Empty until chosen: the form shows the project's default branch instead.
+  // Empty until chosen; see defaultWorktreeBaseRef.
   baseRef: "",
   startFromOrigin: true,
   existingWorktreePath: "",
@@ -823,10 +823,13 @@ function ScheduledTaskEditorDialog({
     : task;
   const selectedProjectId = draft.projectId || projects[0]?.id || "";
   const selectedProject = projects.find((project) => project.id === selectedProjectId);
-  // Until a branch is chosen, show and save the project's default branch.
+  // Until a branch is chosen, use `main`, or the repo's default branch without one.
   const projectRefs = usePaginatedBranches({
     environmentId,
-    cwd: selectedProject?.workspaceRoot ?? null,
+    cwd:
+      draft.workspaceMode === "worktree" && !draft.baseRef
+        ? (selectedProject?.workspaceRoot ?? null)
+        : null,
     query: "",
   }).refs;
   const baseRef = draft.baseRef || defaultWorktreeBaseRef(projectRefs);

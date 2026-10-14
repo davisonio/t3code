@@ -192,7 +192,7 @@ export function createDraft(
     modelSelectionIsExplicit: false,
     schedule: DEFAULT_SCHEDULE,
     workspace: "worktree",
-    // Empty until chosen: the form shows the project's default branch instead.
+    // Empty until chosen; see defaultWorktreeBaseRef.
     baseRef: "",
     checkoutPath: "",
     enabled: true,

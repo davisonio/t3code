@@ -586,10 +586,13 @@ function TaskForm({
     serverEnvironment.scheduledTasksLive({ environmentId, input: {} }),
   );
   const projects = useProjects().filter((project) => project.environmentId === environmentId);
-  // Until a branch is chosen, show and save the project's default branch.
+  // Until a branch is chosen, use `main`, or the repo's default branch without one.
   const projectRefs = usePaginatedBranches({
     environmentId,
-    cwd: projects.find((project) => project.id === draft.projectId)?.workspaceRoot ?? null,
+    cwd:
+      draft.workspace === "worktree" && !draft.baseRef
+        ? (projects.find((project) => project.id === draft.projectId)?.workspaceRoot ?? null)
+        : null,
     query: "",
   }).refs;
   const baseRef = draft.baseRef || defaultWorktreeBaseRef(projectRefs);

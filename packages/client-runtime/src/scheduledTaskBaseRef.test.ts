@@ -9,7 +9,13 @@ const ref = (name: string, flags: { isDefault?: boolean; current?: boolean } = {
 });
 
 describe("defaultWorktreeBaseRef", () => {
-  it("starts from the repo's default branch, not main", () => {
+  it("keeps main wherever the repo has it, even when origin's default differs", () => {
+    expect(defaultWorktreeBaseRef([ref("develop", { isDefault: true }), ref("main")])).toBe("main");
+    expect(defaultWorktreeBaseRef([ref("develop", { isDefault: true }), ref("origin/main")])).toBe(
+      "main",
+    );
+  });
+  it("starts from the repo's default branch when there is no main", () => {
     expect(
       defaultWorktreeBaseRef([
         ref("feature", { current: true }),
