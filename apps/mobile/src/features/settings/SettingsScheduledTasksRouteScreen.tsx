@@ -51,20 +51,19 @@ import { ScreenScrollView as ScrollView } from "../../components/ScreenScrollVie
 import { SegmentedControl } from "../../components/SegmentedControl";
 import { ThemedSwitch } from "../../components/ThemedSwitch";
 import { webhookAddress } from "@t3tools/client-runtime/webhook-address";
-import { defaultWorktreeBaseRef } from "@t3tools/client-runtime/scheduled-task-base-ref";
 import { tryCopyTextWithHaptic } from "../../lib/copyTextWithHaptic";
 import { usePreparedConnection } from "../../state/session";
 import { buildModelOptions } from "../../lib/modelOptions";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { useProjects, useEnvironmentServerConfig } from "../../state/entities";
 import { useEnvironmentQuery } from "../../state/query";
-import { usePaginatedBranches } from "../../state/queries";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { withNativeGlassHeaderItem } from "../layout/native-glass-header-items";
 import { resolveNewTaskBranchLabel } from "../threads/new-task-context-presentation";
 import { useVoiceInputController } from "../voice-input/useVoiceInputController";
 import { ScheduledTaskPromptField } from "./components/ScheduledTaskPromptField";
+import { useScheduledTaskBaseRef } from "./useScheduledTaskBaseRef";
 import {
   AndroidSettingsEnvironmentFilter,
   SettingsEnvironmentFilterHeader,
@@ -586,18 +585,12 @@ function TaskForm({
     serverEnvironment.scheduledTasksLive({ environmentId, input: {} }),
   );
   const projects = useProjects().filter((project) => project.environmentId === environmentId);
-  // Until a branch is chosen, use `main`, or the repo's default branch without one.
-  const projectRefs = usePaginatedBranches({
+  const { baseRef, pending: baseRefPending } = useScheduledTaskBaseRef({
     environmentId,
-    cwd:
-      draft.workspace === "worktree" && !draft.baseRef
-        ? (projects.find((project) => project.id === draft.projectId)?.workspaceRoot ?? null)
-        : null,
-    query: "",
+    cwd: projects.find((project) => project.id === draft.projectId)?.workspaceRoot ?? null,
+    chosen: draft.baseRef,
+    worktree: draft.workspace === "worktree",
   });
-  const baseRef = draft.baseRef || defaultWorktreeBaseRef(projectRefs.refs);
-  // Wait for the first answer so a save cannot fall back to `main` too early.
-  const baseRefPending = projectRefs.isPending && projectRefs.data === null;
   const config = useEnvironmentServerConfig(environmentId);
   const modelOptions = useMemo(
     () => buildModelOptions(config, null, undefined, draft.projectId),

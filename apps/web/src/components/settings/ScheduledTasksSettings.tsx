@@ -824,17 +824,17 @@ function ScheduledTaskEditorDialog({
   const selectedProjectId = draft.projectId || projects[0]?.id || "";
   const selectedProject = projects.find((project) => project.id === selectedProjectId);
   // Until a branch is chosen, use `main`, or the repo's default branch without one.
-  const projectRefs = usePaginatedBranches({
-    environmentId,
-    cwd:
-      draft.workspaceMode === "worktree" && !draft.baseRef
-        ? (selectedProject?.workspaceRoot ?? null)
-        : null,
-    query: "",
-  });
-  const baseRef = draft.baseRef || defaultWorktreeBaseRef(projectRefs.refs);
-  // Wait for the first answer so a save cannot fall back to `main` too early.
-  const baseRefPending = projectRefs.isPending && projectRefs.data === null;
+  const autoBaseRefCwd =
+    draft.workspaceMode === "worktree" && !draft.baseRef
+      ? (selectedProject?.workspaceRoot ?? null)
+      : null;
+  // The first page holds the current and default refs; `main` can sit past it.
+  const topRefs = usePaginatedBranches({ environmentId, cwd: autoBaseRefCwd, query: "" });
+  const mainRefs = usePaginatedBranches({ environmentId, cwd: autoBaseRefCwd, query: "main" });
+  const baseRef = draft.baseRef || defaultWorktreeBaseRef([...mainRefs.refs, ...topRefs.refs]);
+  // Wait for both answers so a save cannot pick a branch too early.
+  const baseRefPending =
+    (topRefs.isPending && topRefs.data === null) || (mainRefs.isPending && mainRefs.data === null);
   // The task runs in selectedProject, so its model picker should reflect that
   // project's effective enablement, not just the machine's.
   const instanceEntries = useMemo(

@@ -6,12 +6,12 @@ import { AppText as Text } from "../../components/AppText";
 import { buildModelOptions, groupByProvider } from "../../lib/modelOptions";
 import { resolveProviderOptionDescriptors } from "../../lib/providerOptions";
 import { useEnvironmentServerConfig, useProjects } from "../../state/entities";
-import { defaultWorktreeBaseRef } from "@t3tools/client-runtime/scheduled-task-base-ref";
 import { useDebouncedValue, usePaginatedBranches } from "../../state/queries";
 import { BranchPickerScreen } from "../threads/NewTaskContextPickerScreens";
 import { ThreadSettingsPickerScreen } from "../threads/ThreadSettingsSheet";
 import { SettingsScreen } from "./components/SettingsScreen";
 import { useScheduledTaskEditor } from "./scheduled-task-editor";
+import { useScheduledTaskBaseRef } from "./useScheduledTaskBaseRef";
 
 function MissingTaskDraft() {
   return (
@@ -115,6 +115,12 @@ export function ScheduledTaskBranchPickerRouteScreen() {
     cwd: project?.workspaceRoot ?? null,
     query: debouncedQuery,
   });
+  const { baseRef } = useScheduledTaskBaseRef({
+    environmentId: editor?.environmentId ?? null,
+    cwd: project?.workspaceRoot ?? null,
+    chosen: editor?.draft.baseRef ?? "",
+    worktree: editor?.draft.workspace === "worktree",
+  });
   const visibleBranches = branches.refs.filter(
     (branch) => !branch.isRemote && branch.name.toLowerCase().includes(query.trim().toLowerCase()),
   );
@@ -126,7 +132,7 @@ export function ScheduledTaskBranchPickerRouteScreen() {
       title="Base branch"
       project={project}
       branches={visibleBranches}
-      selectedBranchName={editor.draft.baseRef || defaultWorktreeBaseRef(branches.refs)}
+      selectedBranchName={baseRef}
       query={query}
       onQueryChange={setQuery}
       loading={
