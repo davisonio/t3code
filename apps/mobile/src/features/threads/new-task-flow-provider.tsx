@@ -594,6 +594,9 @@ export function NewTaskFlowProvider(
     projectDefaultSelection: projectDefaultModelSelection,
     stickySelection: stickyModelSelection,
     modelOptions,
+    ...(editingPendingTask
+      ? {}
+      : { projectSettings, providers: selectedEnvironmentServerConfig?.providers ?? [] }),
   });
   const selectedModelKey = selectedModel
     ? `${selectedModel.instanceId}:${selectedModel.model}`
@@ -628,6 +631,7 @@ export function NewTaskFlowProvider(
     }
     const selection = withRememberedModelOptions(
       options ? { ...option.selection, options } : option.selection,
+      selectedEnvironmentServerConfig,
     );
     const provider = selectedEnvironmentServerConfig?.providers.find(
       (candidate) => candidate.instanceId === selection.instanceId,

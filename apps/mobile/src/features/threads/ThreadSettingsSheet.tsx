@@ -2,6 +2,7 @@ import {
   getPromptControlledTraits,
   getTraitSelectChange,
 } from "@t3tools/client-runtime/model-traits";
+import { useEnvironmentServerConfig } from "../../state/entities";
 import { SheetHeader } from "../../components/ui/SheetHeader";
 import { Toolbar } from "../../components/ui/Toolbar";
 import * as Dialog from "../../components/ui/Dialog";
@@ -1534,6 +1535,7 @@ export function ExistingThreadSettingsRouteScreen() {
  */
 export function NewTaskThreadSettingsRouteScreen() {
   const flow = useNewTaskFlow();
+  const serverConfig = useEnvironmentServerConfig(flow.selectedEnvironmentId);
   const navigation = useNavigation<NativeStackNavigationProp<Record<string, object | undefined>>>();
   const optionDescriptors = resolveProviderOptionDescriptors({
     capabilities: flow.selectedModelOption?.capabilities,
@@ -1550,7 +1552,7 @@ export function NewTaskThreadSettingsRouteScreen() {
       prompt={flow.prompt}
       onPromptChange={flow.setPrompt}
       onSelectModel={(option) => flow.setSelectedModelKey(option.key, option.selection.options)}
-      restoreSelection={withRememberedModelOptions}
+      restoreSelection={(selection) => withRememberedModelOptions(selection, serverConfig)}
       optionDescriptors={optionDescriptors}
       onUpdateOptionSelections={flow.setSelectedModelOptions}
       runtimeMode={flow.runtimeMode}

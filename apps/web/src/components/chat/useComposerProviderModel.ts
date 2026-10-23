@@ -18,6 +18,7 @@ import {
   sortProviderInstanceEntries,
 } from "../../providerInstances";
 import { type UnifiedSettings } from "@t3tools/contracts/settings";
+import type { ProjectSettingSource } from "@t3tools/shared/projectSettings";
 import { getComposerPromptInjectionState, getComposerProviderState } from "./composerProviderState";
 import { resolveComposerProviderSelection } from "../ChatView.logic";
 
@@ -36,6 +37,8 @@ export function useComposerProviderModel(
     readonly threadRef: ScopedThreadRef | DraftId;
     readonly threadModelSelection: ModelSelection | null | undefined;
     readonly projectModelSelection: ModelSelection | null | undefined;
+    /** Where the project's default model comes from; null unless this is an unsent new thread. */
+    readonly newThreadProjectModelSource: ProjectSettingSource | null;
     readonly promptInjectionState: ReturnType<typeof getComposerPromptInjectionState>;
   },
 ) {
@@ -46,6 +49,7 @@ export function useComposerProviderModel(
     threadRef,
     threadModelSelection,
     projectModelSelection,
+    newThreadProjectModelSource,
     promptInjectionState,
     candidateInstanceIds,
     lockedProvider,
@@ -77,6 +81,16 @@ export function useComposerProviderModel(
     threadModelSelection,
     projectModelSelection,
     settings,
+    newThreadProjectSettings:
+      newThreadProjectModelSource === null
+        ? null
+        : {
+            settings: {
+              defaultModelSelection: projectModelSelection ?? null,
+              modelDefaults: settings.modelDefaults,
+            },
+            sources: { defaultModelSelection: newThreadProjectModelSource },
+          },
   });
   const selectedProviderModels = selection.selectedProviderEntry?.models ?? NO_PROVIDER_MODELS;
   const composerProviderState = getComposerProviderState({

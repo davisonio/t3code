@@ -16,6 +16,7 @@ import {
   buildExplicitProviderOptionSelectionsFromDescriptors,
   getProviderOptionDescriptors,
 } from "@t3tools/shared/model";
+import { withNewThreadModelDefaultOptions } from "@t3tools/shared/projectSettings";
 
 export type ModelOption = {
   readonly key: string;
@@ -226,15 +227,20 @@ export function resolveNewTaskModelSelection(input: {
   readonly projectDefaultSelection: ModelSelection | null;
   readonly stickySelection: ModelSelection | null;
   readonly modelOptions: ReadonlyArray<ModelOption>;
+  /** Omitted when the task's selection must stay as stored, as when editing a queued task. */
+  readonly projectSettings?: Parameters<typeof withNewThreadModelDefaultOptions>[1];
+  readonly providers?: Parameters<typeof withNewThreadModelDefaultOptions>[2];
 }): ModelSelection | null {
-  return (
-    input.draftSelection ??
+  if (input.draftSelection) return input.draftSelection;
+  const selection =
     input.projectDefaultSelection ??
     input.stickySelection ??
     input.modelOptions.find((option) => option.isDefault && !option.isUnavailable)?.selection ??
     input.modelOptions.find((option) => !option.isUnavailable)?.selection ??
-    null
-  );
+    null;
+  return selection && input.projectSettings && input.providers
+    ? withNewThreadModelDefaultOptions(selection, input.projectSettings, input.providers)
+    : selection;
 }
 
 export function buildModelOptions(

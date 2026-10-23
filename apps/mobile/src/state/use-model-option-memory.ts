@@ -1,4 +1,5 @@
-import type { ProviderOptionSelection } from "@t3tools/contracts";
+import type { ModelSelection, ProviderOptionSelection, ServerConfig } from "@t3tools/contracts";
+import { resolveModelDefaultOptions } from "@t3tools/shared/model";
 import { appAtomRegistry } from "./atom-registry";
 import {
   modelOptionMemoryAtom,
@@ -59,14 +60,14 @@ export function rememberedModelOptions(
   );
 }
 
-export function withRememberedModelOptions<
-  T extends {
-    readonly instanceId: string;
-    readonly model: string;
-    readonly options?: ReadonlyArray<ProviderOptionSelection>;
-  },
->(selection: T): T {
-  const remembered = rememberedModelOptions(selection.instanceId, selection.model);
+export function withRememberedModelOptions<T extends ModelSelection>(
+  selection: T,
+  config?: Pick<ServerConfig, "settings" | "providers"> | null,
+): T {
+  const remembered =
+    (config?.settings
+      ? resolveModelDefaultOptions(config.settings, selection, config.providers)
+      : undefined) ?? rememberedModelOptions(selection.instanceId, selection.model);
   if (
     remembered === undefined ||
     JSON.stringify(remembered) === JSON.stringify(selection.options ?? [])

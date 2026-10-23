@@ -42,6 +42,7 @@ import {
   draftModelPickMatchesThread,
   normalizeModelSlug,
 } from "@t3tools/shared/model";
+import { withNewThreadModelDefaultOptions } from "@t3tools/shared/projectSettings";
 import { AsyncResult, Atom, type AtomRegistry } from "effect/reactivity";
 import * as Option from "effect/Option";
 import type {
@@ -638,6 +639,7 @@ export interface EffectiveComposerModelState {
 interface ComposerDraftModelState {
   activeProvider: ProviderInstanceId | null;
   modelSelectionByProvider: Partial<Record<ProviderInstanceId, ModelSelection>>;
+  modelSelectionExplicit?: boolean;
 }
 
 function providerSelectionsFromModelSelection(
@@ -1091,7 +1093,10 @@ function legacyToModelSelectionByProvider(
 
 export function deriveEffectiveComposerModelState(input: {
   draft:
-    | Pick<ComposerThreadDraftState, "modelSelectionByProvider" | "activeProvider">
+    | Pick<
+        ComposerThreadDraftState,
+        "modelSelectionByProvider" | "activeProvider" | "modelSelectionExplicit"
+      >
     | null
     | undefined;
   providers: ReadonlyArray<ServerProvider>;
@@ -1100,6 +1105,8 @@ export function deriveEffectiveComposerModelState(input: {
   threadModelSelection: ModelSelection | null | undefined;
   projectModelSelection: ModelSelection | null | undefined;
   settings: UnifiedSettings;
+  /** Set only while the composer is an unsent new thread. */
+  newThreadProjectSettings?: Parameters<typeof withNewThreadModelDefaultOptions>[1] | null;
 }): EffectiveComposerModelState {
   const baseModelCandidate =
     input.threadModelSelection?.model ?? input.projectModelSelection?.model ?? null;
@@ -1161,6 +1168,28 @@ export function deriveEffectiveComposerModelState(input: {
     providerSelectionsFromModelSelection(input.threadModelSelection) ??
     providerSelectionsFromModelSelection(input.projectModelSelection) ??
     null;
+  // Applied on read so the composer shows and sends the same options, and an open draft
+  // follows a default changed elsewhere until the user picks something in it.
+  if (
+    input.newThreadProjectSettings &&
+    input.draft?.modelSelectionExplicit !== true &&
+    input.selectedInstanceId &&
+    selectedModel
+  ) {
+    const { options } = withNewThreadModelDefaultOptions(
+      createModelSelection(
+        input.selectedInstanceId,
+        selectedModel,
+        modelOptions?.[input.selectedInstanceId],
+      ),
+      input.newThreadProjectSettings,
+      input.providers,
+    );
+    return {
+      selectedModel,
+      modelOptions: { ...modelOptions, [input.selectedInstanceId]: options ?? [] },
+    };
+  }
 
   return {
     selectedModel,
@@ -4331,6 +4360,7 @@ export function useComposerDraftModelState(
         ? {
             activeProvider: draft.activeProvider,
             modelSelectionByProvider: draft.modelSelectionByProvider,
+            ...(draft.modelSelectionExplicit ? { modelSelectionExplicit: true } : {}),
           }
         : EMPTY_COMPOSER_DRAFT_MODEL_STATE;
     }),

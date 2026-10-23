@@ -748,8 +748,10 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
     onPromptChange: (text) => setComposerDraftText(composerDraftKey, text),
     reportedModelSelection: props.reportedModelSelection,
     onSelectModel: (option) =>
-      props.onUpdateModelSelection(withRememberedModelOptions(option.selection)),
-    restoreSelection: withRememberedModelOptions,
+      props.onUpdateModelSelection(
+        withRememberedModelOptions(option.selection, props.serverConfig),
+      ),
+    restoreSelection: (selection) => withRememberedModelOptions(selection, props.serverConfig),
     optionDescriptors: providerOptionDescriptors,
     onUpdateOptionSelections: (options) => {
       rememberModelOptions(
