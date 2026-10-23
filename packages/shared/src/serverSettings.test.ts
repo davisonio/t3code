@@ -3,10 +3,12 @@ import {
   ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
+  ServerSettings,
   UsageLimitSourceId,
   type ServerProvider,
 } from "@t3tools/contracts";
 import * as Duration from "effect/Duration";
+import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 import { resolveServerBackgroundActivitySettings } from "./backgroundActivitySettings.ts";
 import { createModelSelection } from "./model.ts";
@@ -892,5 +894,79 @@ describe("synchronized model preferences", () => {
         setModelFavorites: [{ provider, model: "sol", favorite: false }],
       }).favorites,
     ).toEqual([{ provider: otherProvider, model: "sol" }]);
+  });
+});
+
+const decodeServerSettings = Schema.decodeUnknownSync(ServerSettings);
+
+describe("model defaults", () => {
+  const codex = ProviderInstanceId.make("codex_work");
+  const claude = ProviderInstanceId.make("claude_work");
+  const effort = (value: string) => [{ id: "reasoningEffort", value }];
+
+  it("stores a model's default options and replaces only that model's previous default", () => {
+    const first = applyServerSettingsPatch(DEFAULT_SERVER_SETTINGS, {
+      setModelDefaults: [
+        { provider: codex, model: "sol", options: effort("high") },
+        { provider: codex, model: "astra", options: [{ id: "fastMode", value: true }] },
+        { provider: claude, model: "opus", options: effort("low") },
+      ],
+    });
+    expect(first.modelDefaults).toEqual({
+      [codex]: {
+        sol: { options: effort("high") },
+        astra: { options: [{ id: "fastMode", value: true }] },
+      },
+      [claude]: { opus: { options: effort("low") } },
+    });
+
+    const replaced = applyServerSettingsPatch(first, {
+      setModelDefaults: [{ provider: codex, model: "sol", options: effort("max") }],
+    });
+    expect(replaced.modelDefaults).toEqual({
+      [codex]: {
+        sol: { options: effort("max") },
+        astra: { options: [{ id: "fastMode", value: true }] },
+      },
+      [claude]: { opus: { options: effort("low") } },
+    });
+  });
+
+  it("removes a model's default with null and drops a provider once it has no models left", () => {
+    const stored = applyServerSettingsPatch(DEFAULT_SERVER_SETTINGS, {
+      setModelDefaults: [
+        { provider: codex, model: "sol", options: effort("high") },
+        { provider: codex, model: "astra", options: effort("low") },
+        { provider: claude, model: "opus", options: effort("medium") },
+      ],
+    });
+
+    const oneRemoved = applyServerSettingsPatch(stored, {
+      setModelDefaults: [{ provider: codex, model: "sol", options: null }],
+    });
+    expect(oneRemoved.modelDefaults).toEqual({
+      [codex]: { astra: { options: effort("low") } },
+      [claude]: { opus: { options: effort("medium") } },
+    });
+
+    const lastRemoved = applyServerSettingsPatch(oneRemoved, {
+      setModelDefaults: [{ provider: claude, model: "opus", options: null }],
+    });
+    expect(lastRemoved.modelDefaults).toEqual({
+      [codex]: { astra: { options: effort("low") } },
+    });
+  });
+
+  it("keeps model defaults through patches that do not mention them", () => {
+    const stored = applyServerSettingsPatch(DEFAULT_SERVER_SETTINGS, {
+      setModelDefaults: [{ provider: codex, model: "sol", options: effort("high") }],
+    });
+    expect(stored.modelDefaults).toEqual({ [codex]: { sol: { options: effort("high") } } });
+    const unrelated = applyServerSettingsPatch(stored, { defaultRuntimeMode: "auto" });
+    expect(unrelated.modelDefaults).toEqual(stored.modelDefaults);
+  });
+
+  it("decodes settings saved before model defaults existed as an empty record", () => {
+    expect(decodeServerSettings({}).modelDefaults).toEqual({});
   });
 });

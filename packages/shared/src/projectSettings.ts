@@ -8,11 +8,13 @@ import {
   type ProjectSettingsOverrides,
   resolveProjectProviderInstanceEnabled,
   type ResolvedServerSettings,
+  type ServerProvider,
   type ServerSettings,
   type T3ProjectFile,
   type ThreadEnvMode,
   type WorktreeCleanupRules,
 } from "@t3tools/contracts";
+import { createModelSelection, withModelDefaultOptions } from "./model.ts";
 import { normalizeProjectPathForComparison } from "./path.ts";
 import { fallbackTextGenerationModelSelection } from "./serverSettings.ts";
 
@@ -29,6 +31,27 @@ export interface ResolvedProjectSettings<Settings extends ServerSettings = Serve
 }
 
 const EMPTY_OVERRIDES: ProjectSettingsOverrides = {};
+
+// For a new thread whose options nobody passed or inherited. A project's own options for the
+// model outrank the model's default; environment-wide ones do not.
+export function withNewThreadModelDefaultOptions(
+  selection: ModelSelection,
+  project: {
+    readonly settings: Pick<ServerSettings, "defaultModelSelection" | "modelDefaults">;
+    readonly sources: Pick<ProjectSettingSources, "defaultModelSelection">;
+  },
+  providers: ReadonlyArray<Pick<ServerProvider, "instanceId" | "models">>,
+): ModelSelection {
+  const projectSelection =
+    project.sources.defaultModelSelection === "project"
+      ? project.settings.defaultModelSelection
+      : null;
+  return projectSelection?.instanceId === selection.instanceId &&
+    projectSelection.model === selection.model &&
+    (projectSelection.options?.length ?? 0) > 0
+    ? createModelSelection(selection.instanceId, selection.model, projectSelection.options)
+    : withModelDefaultOptions(selection, project.settings, providers);
+}
 
 const ENVIRONMENT_SOURCES: ProjectSettingSources = Object.fromEntries(
   PROJECT_SCOPED_SERVER_SETTING_KEYS.map((key) => [key, "environment"]),

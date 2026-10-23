@@ -389,6 +389,7 @@ export function applyServerSettingsPatch(
     setModelFavorites,
     setModelsHidden,
     setProviderModelOrder,
+    setModelDefaults,
     providerModelPreferences,
     automaticGitFetchInterval,
     providerHealthRefreshInterval,
@@ -488,11 +489,25 @@ export function applyServerSettingsPatch(
       },
     };
   }
+  let modelDefaults = current.modelDefaults;
+  for (const change of setModelDefaults ?? []) {
+    const { [change.provider]: models, ...otherProviders } = modelDefaults;
+    const { [change.model]: _previous, ...otherModels } = models ?? {};
+    const nextModels =
+      change.options === null
+        ? otherModels
+        : { ...otherModels, [change.model]: { options: change.options } };
+    modelDefaults =
+      Object.keys(nextModels).length === 0
+        ? otherProviders
+        : { ...otherProviders, [change.provider]: nextModels };
+  }
   const next = deepMerge(current, patchForMerge);
   const nextWithReplacementsBase = {
     ...next,
     favorites,
     providerModelPreferences: nextModelPreferences,
+    modelDefaults,
     ...(worktreeCleanupPatch === undefined
       ? {}
       : {

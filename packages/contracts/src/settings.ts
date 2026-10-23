@@ -26,6 +26,7 @@ import {
   CustomModelSetting,
   DEFAULT_TEXT_GENERATION_MODEL,
   DEFAULT_TEXT_GENERATION_REASONING_EFFORT,
+  ProviderOptionSelection,
   ProviderOptionSelections,
 } from "./model.ts";
 import { ModelSelection } from "./modelSelection.ts";
@@ -1177,6 +1178,15 @@ export const ServerSettings = Schema.Struct({
   defaultRuntimeMode: RuntimeMode.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_RUNTIME_MODE)),
   ),
+  // Not validated on write: a model can lose an option later, so readers drop
+  // whatever its current descriptors no longer offer.
+  modelDefaults: Schema.Record(
+    ProviderInstanceId,
+    Schema.Record(
+      TrimmedNonEmptyString,
+      Schema.Struct({ options: Schema.optionalKey(Schema.Array(ProviderOptionSelection)) }),
+    ),
+  ).pipe(Schema.withDecodingDefault(Effect.succeed({}))),
 
   projectSettingsOverrides: Schema.Record(ProjectId, ProjectSettingsOverrides).pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
@@ -1484,6 +1494,15 @@ export const ServerSettingsPatch = Schema.Struct({
   ),
   setProviderModelOrder: Schema.optionalKey(
     Schema.Struct({ provider: ProviderInstanceId, modelOrder: Schema.Array(TrimmedString) }),
+  ),
+  setModelDefaults: Schema.optionalKey(
+    Schema.Array(
+      Schema.Struct({
+        provider: ProviderInstanceId,
+        model: TrimmedNonEmptyString,
+        options: Schema.NullOr(Schema.Array(ProviderOptionSelection)),
+      }),
+    ),
   ),
   favorites: Schema.optionalKey(ModelFavorites),
   providerModelPreferences: Schema.optionalKey(ProviderModelPreferences),

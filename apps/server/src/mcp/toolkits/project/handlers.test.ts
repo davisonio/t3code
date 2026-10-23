@@ -2,10 +2,12 @@ import { expect, it } from "@effect/vitest";
 import {
   EnvironmentId,
   ProjectId,
+  ProviderDriverKind,
   ProviderInstanceId,
   type Project as ProjectRecord,
   type ModelSelection,
   type RuntimeMode,
+  type ServerProvider,
 } from "@t3tools/contracts";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -22,6 +24,7 @@ import * as ServerConfig from "../../../config.ts";
 import * as ServerSettings from "../../../serverSettings.ts";
 import * as Project from "../../../project/ProjectService.ts";
 import * as ManagedProjectFolders from "../../../project/ManagedProjectFolders.ts";
+import * as ProviderRegistry from "../../../provider/ProviderRegistry.ts";
 import * as GitVcsDriver from "../../../vcs/GitVcsDriver.ts";
 import * as VcsProcess from "../../../vcs/VcsProcess.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
@@ -29,11 +32,57 @@ import * as McpToolAccess from "../../McpToolAccess.ts";
 import * as ProjectHandlers from "./handlers.ts";
 import { ProjectToolkit } from "./tools.ts";
 
+const claudeInstanceId = ProviderInstanceId.make("claudeAgent");
+
+// Opus offers a select (reasoningEffort) and a boolean (fastMode) option.
+const claudeProviders: ReadonlyArray<ServerProvider> = [
+  {
+    instanceId: claudeInstanceId,
+    driver: ProviderDriverKind.make("claudeAgent"),
+    enabled: true,
+    installed: true,
+    version: "test",
+    status: "ready",
+    auth: { status: "authenticated" },
+    checkedAt: "2026-09-13T00:00:00.000Z",
+    models: [
+      {
+        slug: "claude-opus",
+        name: "Opus",
+        isCustom: false,
+        capabilities: {
+          optionDescriptors: [
+            {
+              id: "reasoningEffort",
+              label: "Reasoning",
+              type: "select",
+              options: [
+                { id: "low", label: "Low" },
+                { id: "medium", label: "Medium" },
+                { id: "high", label: "High" },
+                { id: "max", label: "Max" },
+              ],
+            },
+            { id: "fastMode", label: "Fast", type: "boolean" },
+          ],
+        },
+      },
+    ],
+    slashCommands: [],
+    skills: [],
+  },
+];
+
 const clientLaunchHarness = (input: {
   readonly runtimeModeCeiling: RuntimeMode;
   readonly defaultRuntimeMode?: RuntimeMode;
   /** Where Settings saves a project's model; the legacy project field stays null. */
   readonly overrideModel?: ModelSelection;
+  /** The environment default; a project with no model of its own falls back to it. */
+  readonly environmentDefault?: ModelSelection;
+  readonly modelDefaults?: NonNullable<
+    Parameters<typeof ServerSettings.ServerSettingsService.layerTest>[0]
+  >["modelDefaults"];
   readonly launched: Array<ThreadLaunch.ThreadLaunchInput>;
   readonly workspaceRoot?: string;
   readonly checkWorktreeBase?: ThreadLaunch.ThreadLaunchService["Service"]["checkWorktreeBase"];
@@ -48,6 +97,10 @@ const clientLaunchHarness = (input: {
       ...(input.defaultRuntimeMode === undefined
         ? {}
         : { defaultRuntimeMode: input.defaultRuntimeMode }),
+      ...(input.environmentDefault === undefined
+        ? {}
+        : { defaultModelSelection: input.environmentDefault }),
+      ...(input.modelDefaults === undefined ? {} : { modelDefaults: input.modelDefaults }),
       ...(input.overrideModel === undefined
         ? {}
         : {
@@ -71,6 +124,9 @@ const clientLaunchHarness = (input: {
       capabilities: new Set(["orchestration" as const]),
     }),
     Layer.mock(ThreadManagement.ThreadManagementService)({}),
+    Layer.mock(ProviderRegistry.ProviderRegistry)({
+      getProviders: Effect.succeed(claudeProviders),
+    }),
     Layer.mock(ThreadLaunch.ThreadLaunchService)({
       checkWorktreeBase: input.checkWorktreeBase ?? (() => Effect.void),
       launch: (launch) => {
@@ -96,7 +152,10 @@ const clientLaunchHarness = (input: {
             ? Option.some({
                 id,
                 workspaceRoot: input.workspaceRoot ?? "/projects/client-target",
-                defaultModelSelection: input.overrideModel === undefined ? modelSelection : null,
+                defaultModelSelection:
+                  input.overrideModel === undefined && input.environmentDefault === undefined
+                    ? modelSelection
+                    : null,
               } as unknown as ProjectRecord)
             : Option.none(),
         ),
@@ -297,5 +356,95 @@ it.effect("a launch into a new worktree creates nothing when its base ref has no
 
     expect((yield* launchFrom("main")).at(-1)?.result).toMatchObject({ projectId });
     expect(launched).toHaveLength(1);
+  }),
+);
+
+const reasoningEffort = (value: string) => ({ id: "reasoningEffort", value });
+
+it.effect.each([
+  {
+    name: "explicit options win over the stored default",
+    launch: {
+      instanceId: claudeInstanceId,
+      model: "claude-opus",
+      options: [reasoningEffort("low")],
+    },
+    stored: [reasoningEffort("high")],
+    expected: [reasoningEffort("low")],
+  },
+  {
+    name: "a selection without options takes the stored default",
+    launch: { instanceId: claudeInstanceId, model: "claude-opus" },
+    stored: [reasoningEffort("high"), { id: "fastMode", value: true }],
+    expected: [reasoningEffort("high"), { id: "fastMode", value: true }],
+  },
+  {
+    name: "stored options the model does not offer or cannot take are dropped",
+    launch: { instanceId: claudeInstanceId, model: "claude-opus" },
+    stored: [
+      reasoningEffort("ultra"),
+      { id: "fastMode", value: "yes" },
+      { id: "verbosity", value: "low" },
+      reasoningEffort("high"),
+      { id: "fastMode", value: true },
+    ],
+    expected: [reasoningEffort("high"), { id: "fastMode", value: true }],
+  },
+  {
+    name: "a stored default with no valid option gives the thread no options",
+    launch: { instanceId: claudeInstanceId, model: "claude-opus" },
+    stored: [reasoningEffort("ultra")],
+    expected: [],
+  },
+  {
+    name: "a model default replaces the environment default's options",
+    environmentDefault: {
+      instanceId: claudeInstanceId,
+      model: "claude-opus",
+      options: [reasoningEffort("medium")],
+    },
+    stored: [reasoningEffort("high")],
+    expected: [reasoningEffort("high")],
+  },
+  {
+    name: "a project's own default options win over the stored default",
+    overrideModel: {
+      instanceId: claudeInstanceId,
+      model: "claude-opus",
+      options: [reasoningEffort("max")],
+    },
+    stored: [reasoningEffort("high")],
+    expected: [reasoningEffort("max")],
+  },
+])("launch model options: $name", (row) =>
+  Effect.gen(function* () {
+    const launched: Array<ThreadLaunch.ThreadLaunchInput> = [];
+    const { projectId, dependencies } = clientLaunchHarness({
+      runtimeModeCeiling: "full-access",
+      launched,
+      modelDefaults: { [claudeInstanceId]: { "claude-opus": { options: row.stored } } },
+      ...("environmentDefault" in row ? { environmentDefault: row.environmentDefault } : {}),
+      ...("overrideModel" in row ? { overrideModel: row.overrideModel } : {}),
+    });
+    const toolkit = yield* ProjectToolkit.pipe(
+      Effect.provide(
+        McpToolAccess.HandlersLayer.layer(ProjectHandlers.layer).pipe(Layer.provide(dependencies)),
+      ),
+    );
+    const result = yield* toolkit
+      .handle("t3_thread_launch", {
+        title: "Fix",
+        projectId,
+        ...("launch" in row ? { modelSelection: row.launch } : {}),
+      })
+      .pipe(Stream.unwrap, Stream.runCollect, Effect.provide(dependencies));
+
+    expect(result.at(-1)?.result).toMatchObject({ projectId });
+    expect(launched).toHaveLength(1);
+    expect(launched[0]?.modelSelection).toMatchObject({
+      instanceId: claudeInstanceId,
+      model: "claude-opus",
+    });
+    expect(launched[0]?.modelSelection.options ?? []).toEqual(row.expected);
   }),
 );

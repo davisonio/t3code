@@ -7,6 +7,8 @@ import {
   ProviderInstanceId,
   type ProviderOptionDescriptor,
   type ProviderOptionSelection,
+  type ServerProvider,
+  type ServerSettings,
 } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
@@ -488,6 +490,54 @@ export function createModelSelection(
     model,
   };
   return selections.length > 0 ? { ...base, options: selections } : base;
+}
+
+export function providerOptionValueFits(
+  descriptor: ProviderOptionDescriptor,
+  value: ProviderOptionSelection["value"],
+): boolean {
+  return descriptor.type === "boolean"
+    ? typeof value === "boolean"
+    : descriptor.options.some((choice) => choice.id === value);
+}
+
+export function resolveModelDefaultOptions(
+  settings: Pick<ServerSettings, "modelDefaults">,
+  selection: Pick<ModelSelection, "instanceId" | "model">,
+  providers: ReadonlyArray<Pick<ServerProvider, "instanceId" | "models">>,
+): ReadonlyArray<ProviderOptionSelection> | undefined {
+  const stored = settings.modelDefaults[selection.instanceId]?.[selection.model]?.options;
+  if (stored === undefined) return undefined;
+  const descriptors = providers
+    .find((provider) => provider.instanceId === selection.instanceId)
+    ?.models.find((model) => model.slug === selection.model)?.capabilities?.optionDescriptors;
+  const kept = new Set<string>();
+  return stored.filter((option) => {
+    const descriptor = descriptors?.find((candidate) => candidate.id === option.id);
+    if (
+      descriptor === undefined ||
+      kept.has(option.id) ||
+      !providerOptionValueFits(descriptor, option.value) ||
+      // Prompt-injected values are a prefix the composer adds to the prompt, not an option.
+      (descriptor.type === "select" &&
+        descriptor.promptInjectedValues?.includes(String(option.value)))
+    ) {
+      return false;
+    }
+    kept.add(option.id);
+    return true;
+  });
+}
+
+export function withModelDefaultOptions(
+  selection: ModelSelection,
+  settings: Pick<ServerSettings, "modelDefaults">,
+  providers: ReadonlyArray<Pick<ServerProvider, "instanceId" | "models">>,
+): ModelSelection {
+  const options = resolveModelDefaultOptions(settings, selection, providers);
+  return options === undefined
+    ? selection
+    : createModelSelection(selection.instanceId, selection.model, options);
 }
 
 export function resolvePromptInjectedEffort(

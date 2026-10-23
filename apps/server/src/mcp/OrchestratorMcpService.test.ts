@@ -2454,6 +2454,239 @@ describe("OrchestratorMcpService provider resolution", () => {
       }),
   );
 
+  describe("stored model defaults for delegated tasks", () => {
+    const peerInstanceId = ProviderInstanceId.make("codex-subscription-2");
+    const driver = ProviderDriverKind.make("codex");
+    const inheritedSelection = {
+      instanceId: codexInstanceId,
+      model: "gpt-5.4",
+      options: [
+        { id: "reasoningEffort", value: "high" },
+        { id: "serviceTier", value: "priority" },
+      ],
+    } as const;
+    const optionDescriptors = [
+      {
+        id: "reasoningEffort",
+        label: "Reasoning",
+        description: "How hard the model thinks.",
+        type: "select",
+        options: [
+          { id: "low", label: "Low" },
+          { id: "high", label: "High" },
+          { id: "max", label: "Max" },
+        ],
+      },
+      { id: "fastMode", label: "Fast", type: "boolean" },
+    ] as const;
+    const modelWithOptions = (slug: string) => ({
+      slug,
+      name: slug,
+      isCustom: false,
+      capabilities: { optionDescriptors },
+    });
+    const providers = [
+      {
+        ...providerSnapshot({ instanceId: codexInstanceId, driver, model: "gpt-5.4" }),
+        models: [modelWithOptions("gpt-5.4"), modelWithOptions("other-model")],
+      },
+      {
+        ...providerSnapshot({ instanceId: peerInstanceId, driver, model: "other-model" }),
+        models: [modelWithOptions("other-model")],
+      },
+    ];
+
+    type DelegatedSelection = {
+      readonly instanceId: ProviderInstanceId;
+      readonly model: string;
+      readonly options?: ReadonlyArray<{ readonly id: string; readonly value: unknown }>;
+    };
+    const subagent = (selection: DelegatedSelection) => ({
+      id: taskId,
+      threadId: parentThreadId,
+      origin: "app_owned",
+      childThreadId,
+      providerInstanceId: selection.instanceId,
+      model: selection.model,
+      status: "running",
+      result: null,
+    });
+
+    // Returns the model selection the delegated child thread is started with.
+    const delegatedSelection = (
+      target: Record<string, unknown>,
+      settings: Parameters<typeof ServerSettings.layerTest>[0] = {},
+    ) =>
+      Effect.gen(function* () {
+        const dispatched: Array<DelegatedSelection> = [];
+        const dependencies = Layer.mergeAll(
+          NodeServices.layer,
+          Layer.mock(ThreadManagementService.ThreadManagementService)({
+            hasReceipt: () => Effect.succeed(false),
+            assertProviderInstanceEnabled: () => Effect.void,
+            getThreadRecords: (threadId) =>
+              Effect.succeed(
+                threadId === parentThreadId
+                  ? parentProjection(
+                      dispatched.length > 0 ? [subagent(dispatched[0]!)] : [],
+                      inheritedSelection,
+                    )
+                  : childProjection,
+              ),
+            dispatch: (command) =>
+              Effect.sync(() => {
+                const selection = (command as { modelSelection: DelegatedSelection })
+                  .modelSelection;
+                dispatched.push(selection);
+                return {
+                  sequence: 1,
+                  storedEvents: [
+                    { event: { type: "subagent.updated", payload: subagent(selection) } },
+                  ],
+                } as never;
+              }),
+          }),
+          ServerSettings.layerTest(settings),
+          providerRegistryLayer(providers),
+          adapterRegistryLayer([codexInstanceId, peerInstanceId]),
+          Layer.mock(ProjectService.ProjectService)({}),
+          Layer.mock(SecretRequests.SecretRequests)({}),
+          Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
+        );
+        yield* Effect.gen(function* () {
+          const service = yield* OrchestratorMcpService.OrchestratorMcpService;
+          yield* service.delegateTask(scope, {
+            task: "Review the change.",
+            target: yield* decodeTarget(target),
+            mode: "async",
+            clientRequestId: "model-defaults",
+          });
+        }).pipe(Effect.provide(layerOrchestratorService.pipe(Layer.provide(dependencies))));
+        return dispatched[0];
+      });
+
+    it.effect("same model as the parent inherits its options rather than the stored default", () =>
+      Effect.gen(function* () {
+        const selection = yield* delegatedSelection(
+          {},
+          {
+            modelDefaults: {
+              [codexInstanceId]: {
+                "gpt-5.4": { options: [{ id: "reasoningEffort", value: "max" }] },
+              },
+            },
+          },
+        );
+        assert.deepEqual(selection, inheritedSelection);
+      }),
+    );
+
+    const otherModelDefault = [
+      { id: "reasoningEffort", value: "max" },
+      { id: "fastMode", value: true },
+    ];
+    const peerModelDefault = [{ id: "reasoningEffort", value: "low" }];
+    it.effect.each([
+      {
+        name: "different model",
+        target: { model: "other-model" },
+        instanceId: codexInstanceId,
+        expected: otherModelDefault,
+      },
+      {
+        name: "different provider instance",
+        target: { providerInstanceId: peerInstanceId, model: "other-model" },
+        instanceId: peerInstanceId,
+        expected: peerModelDefault,
+      },
+    ])("a child on a $name gets the stored default for its own instance and model", (testCase) =>
+      Effect.gen(function* () {
+        const selection = yield* delegatedSelection(testCase.target, {
+          modelDefaults: {
+            [codexInstanceId]: { "other-model": { options: otherModelDefault } },
+            [peerInstanceId]: { "other-model": { options: peerModelDefault } },
+          },
+        });
+        assert.deepEqual(selection, {
+          instanceId: testCase.instanceId,
+          model: "other-model",
+          options: testCase.expected,
+        });
+      }),
+    );
+
+    it.effect.each([
+      {
+        name: "an option the model does not offer",
+        stored: [
+          { id: "serviceTier", value: "priority" },
+          { id: "fastMode", value: true },
+        ],
+        expected: [{ id: "fastMode", value: true }],
+      },
+      {
+        name: "a select value outside its choices",
+        stored: [
+          { id: "reasoningEffort", value: "turbo" },
+          { id: "fastMode", value: true },
+        ],
+        expected: [{ id: "fastMode", value: true }],
+      },
+      {
+        name: "a non-boolean value for a boolean option",
+        stored: [
+          { id: "fastMode", value: "yes" },
+          { id: "reasoningEffort", value: "max" },
+        ],
+        expected: [{ id: "reasoningEffort", value: "max" }],
+      },
+      {
+        name: "every entry invalid",
+        stored: [
+          { id: "serviceTier", value: "priority" },
+          { id: "reasoningEffort", value: "turbo" },
+        ],
+        expected: undefined,
+      },
+    ])("checks stored default options against the target model and drops $name", (testCase) =>
+      Effect.gen(function* () {
+        const selection = yield* delegatedSelection(
+          { model: "other-model" },
+          {
+            modelDefaults: {
+              [codexInstanceId]: { "other-model": { options: testCase.stored } },
+            },
+          },
+        );
+        assert.deepEqual(selection, {
+          instanceId: codexInstanceId,
+          model: "other-model",
+          ...(testCase.expected === undefined ? {} : { options: testCase.expected }),
+        });
+      }),
+    );
+
+    it.effect("explicit target options replace the stored default instead of merging into it", () =>
+      Effect.gen(function* () {
+        const selection = yield* delegatedSelection(
+          { model: "other-model", options: { fastMode: false } },
+          {
+            modelDefaults: {
+              [codexInstanceId]: {
+                "other-model": { options: [{ id: "reasoningEffort", value: "max" }] },
+              },
+            },
+          },
+        );
+        assert.deepEqual(selection, {
+          instanceId: codexInstanceId,
+          model: "other-model",
+          options: [{ id: "fastMode", value: false }],
+        });
+      }),
+    );
+  });
+
   describe("resolveRuntimeMode", () => {
     const muse = {
       modelSelection: { instanceId: ProviderInstanceId.make("muse"), model: "muse-model" },

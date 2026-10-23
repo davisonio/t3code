@@ -65,7 +65,12 @@ import {
   ThreadId,
   isOrchestrationV2WorkActive,
 } from "@t3tools/contracts";
-import { getProviderOptionCurrentValue } from "@t3tools/shared/model";
+import {
+  getProviderOptionCurrentValue,
+  providerOptionValueFits,
+  resolveModelDefaultOptions,
+  withModelDefaultOptions,
+} from "@t3tools/shared/model";
 import { runRanAfter } from "@t3tools/shared/orchestrationV2ThreadError";
 import {
   normalizeThreadPullRequestKey,
@@ -415,17 +420,12 @@ function invalidOptionSelections(
       problems.push(`Unknown option ${selection.id}; supported options: ${known || "none"}.`);
       continue;
     }
-    if (descriptor.type === "boolean" && typeof selection.value !== "boolean") {
-      problems.push(`Option ${selection.id} expects a boolean value.`);
-      continue;
-    }
-    if (
-      descriptor.type === "select" &&
-      !descriptor.options.some((choice) => choice.id === selection.value)
-    ) {
-      const choices = descriptor.options.map((choice) => choice.id).join(", ");
-      problems.push(`Option ${selection.id} must be one of: ${choices}.`);
-    }
+    if (providerOptionValueFits(descriptor, selection.value)) continue;
+    problems.push(
+      descriptor.type === "boolean"
+        ? `Option ${selection.id} expects a boolean value.`
+        : `Option ${selection.id} must be one of: ${descriptor.options.map((choice) => choice.id).join(", ")}.`,
+    );
   }
   return problems;
 }
@@ -1298,6 +1298,9 @@ const make = Effect.gen(function* () {
   });
 
   const loadProviders = providerRegistry.getProviders;
+  const loadSettings = serverSettings.getSettings.pipe(
+    Effect.mapError(() => failure("orchestration_error", "Unable to read server settings.")),
+  );
 
   const loadOrchestrationCapableInstanceIds = () =>
     providerAdapters.list().pipe(Effect.map((instanceIds) => new Set(instanceIds)));
@@ -1467,6 +1470,14 @@ const make = Effect.gen(function* () {
     const inheritsOptions =
       instanceId === inheritedSelection.instanceId && model === inheritedSelection.model;
     let options = inheritsOptions ? inheritedSelection.options : undefined;
+    if (!inheritsOptions && requestedOptions === undefined) {
+      const defaults = resolveModelDefaultOptions(
+        yield* loadSettings,
+        { instanceId, model },
+        input.providers,
+      );
+      if (defaults !== undefined && defaults.length > 0) options = defaults;
+    }
     if (requestedOptions !== undefined) {
       const selections = new Map(
         (requestedOptions.length === 0 ? [] : (options ?? [])).map((selection) => [
@@ -1822,8 +1833,14 @@ const make = Effect.gen(function* () {
             : "bindToCurrentThread binds to this thread, which belongs to a different project.",
         );
       }
-      const modelSelection =
-        parent?.thread.modelSelection ?? (yield* projectDefaultModelSelection(project));
+      let modelSelection = parent?.thread.modelSelection;
+      if (modelSelection === undefined) {
+        const projectSelection = yield* projectDefaultModelSelection(project);
+        modelSelection =
+          (projectSelection.options?.length ?? 0) > 0
+            ? projectSelection
+            : withModelDefaultOptions(projectSelection, yield* loadSettings, yield* loadProviders);
+      }
       const derivedTitle = input.prompt.split("\n")[0]?.trim() ?? "";
       const title =
         input.title ?? (derivedTitle.length > 0 ? derivedTitle.slice(0, 80) : "Scheduled task");
@@ -2077,9 +2094,7 @@ const make = Effect.gen(function* () {
       const { parent, limits } = yield* loadCaller(scope);
       const providers = yield* loadProviders;
       const orchestrationCapableInstanceIds = yield* loadOrchestrationCapableInstanceIds();
-      const settings = yield* serverSettings.getSettings.pipe(
-        Effect.mapError(() => failure("orchestration_error", "Unable to read server settings.")),
-      );
+      const settings = yield* loadSettings;
       const inherited = parent?.thread.modelSelection;
       const searchTerms = input.search?.toLowerCase().split(/\s+/) ?? [];
       return {

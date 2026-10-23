@@ -7,10 +7,14 @@ import * as ThreadMessageIntake from "../../../orchestration-v2/ThreadMessageInt
 import * as Claims from "../../../orchestration-v2/AttachmentClaims.ts";
 import * as Project from "../../../project/ProjectService.ts";
 import * as ManagedProjectFolders from "../../../project/ManagedProjectFolders.ts";
+import * as ProviderRegistry from "../../../provider/ProviderRegistry.ts";
 import * as Repositories from "../../../sourceControl/SourceControlRepositoryService.ts";
 import * as GitVcsDriver from "../../../vcs/GitVcsDriver.ts";
 import * as ServerSettings from "../../../serverSettings.ts";
-import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
+import {
+  resolveProjectSettings,
+  withNewThreadModelDefaultOptions,
+} from "@t3tools/shared/projectSettings";
 import { resolveRuntimeMode } from "../../OrchestratorMcpService.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
 import { newCommandId, readCaller, resolveProjectId, unavailable } from "../../threadAccess.ts";
@@ -125,33 +129,39 @@ export const layer = McpToolAccess.toLayer(ProjectToolkit, {
                 }),
             ),
           );
+        const settings = yield* ServerSettings.ServerSettingsService.pipe(
+          Effect.flatMap((service) => service.getSettings),
+          Effect.mapError(unavailable),
+        );
+        const projectSettings = resolveProjectSettings(settings, projectId, yield* readProject);
         // A caller outside a thread has nothing to inherit, so it starts with the
         // project's effective defaults, as the composer does. Its mode stays
         // within the ceiling it was approved with.
-        const projectDefaults =
-          caller === undefined
-            ? yield* ServerSettings.ServerSettingsService.pipe(
-                Effect.flatMap((settings) => settings.getSettings),
-                Effect.mapError(unavailable),
-                Effect.flatMap((settings) =>
-                  Effect.map(
-                    readProject,
-                    (project) => resolveProjectSettings(settings, projectId, project).settings,
-                  ),
-                ),
-              )
-            : undefined;
-        const modelSelection =
+        const projectDefaults = caller === undefined ? projectSettings.settings : undefined;
+        const requestedSelection =
           input.modelSelection ??
           caller?.modelSelection ??
           projectDefaults?.defaultModelSelection ??
           undefined;
-        if (modelSelection === undefined)
+        if (requestedSelection === undefined)
           return yield* new OrchestratorMcpFailure({
             code: "invalid_request",
             message:
               "Pass modelSelection: the project has no default model. orchestrator_capabilities lists providers and models.",
           });
+        const keepsOptions =
+          input.modelSelection !== undefined
+            ? input.modelSelection.options !== undefined
+            : caller !== undefined;
+        const modelSelection = keepsOptions
+          ? requestedSelection
+          : withNewThreadModelDefaultOptions(
+              requestedSelection,
+              projectSettings,
+              yield* ProviderRegistry.ProviderRegistry.pipe(
+                Effect.flatMap((registry) => registry.getProviders),
+              ),
+            );
         const startedRuntimeMode =
           projectDefaults !== undefined && input.runtimeMode === undefined
             ? yield* resolveRuntimeMode(runtimeMode, projectDefaults.defaultRuntimeMode).pipe(
