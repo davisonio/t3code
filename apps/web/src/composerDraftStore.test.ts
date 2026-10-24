@@ -31,6 +31,7 @@ import {
   type ModelSelection,
   type PreviewAnnotationPayload,
   type ProviderOptionSelection,
+  type ServerProvider,
 } from "@t3tools/contracts";
 import { createModelSelection } from "@t3tools/shared/model";
 
@@ -1534,6 +1535,181 @@ describe("composerDraftStore modelSelection", () => {
         options: [{ id: "reasoningEffort", value: "low" }],
       }),
     );
+  });
+});
+
+describe("composerDraftStore new thread model defaults", () => {
+  const threadId = ThreadId.make("thread-new-thread-model-defaults");
+  const threadRef = scopeThreadRef(TEST_ENVIRONMENT_ID, threadId);
+  const MODEL_DEFAULTS = {
+    [CODEX_INSTANCE]: {
+      "gpt-5.4": { options: toSelections({ effort: "high", fastMode: true }) },
+    },
+  };
+  const CODEX_PROVIDERS: ReadonlyArray<ServerProvider> = [
+    {
+      instanceId: CODEX_INSTANCE,
+      driver: CODEX_DRIVER,
+      enabled: true,
+      installed: true,
+      version: null,
+      status: "ready",
+      auth: { status: "authenticated" },
+      checkedAt: "2026-01-01T00:00:00.000Z",
+      models: [
+        {
+          slug: "gpt-5.4",
+          name: "GPT-5.4",
+          isCustom: false,
+          capabilities: {
+            optionDescriptors: [
+              {
+                id: "effort",
+                label: "Effort",
+                type: "select",
+                options: [
+                  { id: "low", label: "Low" },
+                  { id: "medium", label: "Medium" },
+                  { id: "high", label: "High" },
+                  { id: "max", label: "Max" },
+                ],
+              },
+              { id: "fastMode", label: "Fast mode", type: "boolean" },
+            ],
+          },
+        },
+      ],
+      slashCommands: [],
+      skills: [],
+    },
+  ];
+
+  beforeEach(() => {
+    resetComposerDraftStore();
+  });
+
+  function codexOptionsFor(
+    input: Partial<Parameters<typeof deriveEffectiveComposerModelState>[0]>,
+  ) {
+    return deriveEffectiveComposerModelState({
+      draft: draftFor(threadId, TEST_ENVIRONMENT_ID),
+      providers: CODEX_PROVIDERS,
+      selectedProvider: CODEX_DRIVER,
+      selectedInstanceId: CODEX_INSTANCE,
+      threadModelSelection: null,
+      projectModelSelection: null,
+      settings: DEFAULT_UNIFIED_SETTINGS,
+      ...input,
+    }).modelOptions?.[CODEX_INSTANCE];
+  }
+
+  // The draft holds what the composer shows before the send: remembered options, or the
+  // project/environment default seeded into it non-explicitly.
+  it.each([
+    {
+      name: "applies the model default to an untouched new thread",
+      draft: { effort: "low" },
+      explicit: false,
+      defaultOptions: null,
+      source: "environment",
+      modelDefault: true,
+      expected: { effort: "high", fastMode: true },
+    },
+    {
+      name: "keeps options picked in this draft over a model default",
+      draft: { effort: "low" },
+      explicit: true,
+      defaultOptions: null,
+      source: "environment",
+      modelDefault: true,
+      expected: { effort: "low" },
+    },
+    {
+      name: "keeps the project default over a model default",
+      draft: { effort: "medium" },
+      explicit: false,
+      defaultOptions: { effort: "medium" },
+      source: "project",
+      modelDefault: true,
+      expected: { effort: "medium" },
+    },
+    {
+      name: "lets a model default replace a seeded environment default",
+      draft: { effort: "max" },
+      explicit: false,
+      defaultOptions: { effort: "max" },
+      source: "environment",
+      modelDefault: true,
+      expected: { effort: "high", fastMode: true },
+    },
+    {
+      name: "keeps remembered options when no model default is stored",
+      draft: { effort: "low" },
+      explicit: false,
+      defaultOptions: null,
+      source: "environment",
+      modelDefault: false,
+      expected: { effort: "low" },
+    },
+  ] as const)("$name", (row) => {
+    useComposerDraftStore
+      .getState()
+      .setModelSelection(threadRef, modelSelection(CODEX_DRIVER, "gpt-5.4", row.draft), {
+        explicit: row.explicit,
+      });
+
+    expect(
+      codexOptionsFor({
+        newThreadProjectSettings: {
+          settings: {
+            defaultModelSelection: row.defaultOptions
+              ? modelSelection(CODEX_DRIVER, "gpt-5.4", row.defaultOptions)
+              : null,
+            modelDefaults: row.modelDefault ? MODEL_DEFAULTS : {},
+          },
+          sources: { defaultModelSelection: row.source },
+        },
+      }),
+    ).toEqual(toSelections(row.expected));
+  });
+
+  it("leaves an existing thread's own options alone", () => {
+    expect(
+      codexOptionsFor({
+        threadModelSelection: modelSelection(CODEX_DRIVER, "gpt-5.4", { effort: "max" }),
+        newThreadProjectSettings: null,
+      }),
+    ).toEqual(toSelections({ effort: "max" }));
+  });
+
+  it("drops default options the model does not offer and keeps the valid ones", () => {
+    useComposerDraftStore
+      .getState()
+      .setModelSelection(threadRef, modelSelection(CODEX_DRIVER, "gpt-5.4", { effort: "low" }));
+
+    expect(
+      codexOptionsFor({
+        newThreadProjectSettings: {
+          settings: {
+            defaultModelSelection: null,
+            modelDefaults: {
+              [CODEX_INSTANCE]: {
+                "gpt-5.4": {
+                  options: [
+                    { id: "effort", value: "ultra" },
+                    { id: "effort", value: "max" },
+                    { id: "fastMode", value: "yes" },
+                    { id: "verbosity", value: "high" },
+                    { id: "fastMode", value: true },
+                  ],
+                },
+              },
+            },
+          },
+          sources: { defaultModelSelection: "environment" },
+        },
+      }),
+    ).toEqual(toSelections({ effort: "max", fastMode: true }));
   });
 });
 
