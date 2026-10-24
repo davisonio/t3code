@@ -529,11 +529,17 @@ export function useModelDefault(input: {
   readonly models: ReadonlyArray<ServerProviderModel>;
 }) {
   const { environmentId, instanceId, model, models } = input;
-  const settings = useAtomValue(
-    environmentId ? serverEnvironment.settingsValueAtom(environmentId) : noEnvironmentSettingsAtom,
-  );
+  const config = useAtomValue(serverEnvironment.configValueAtom(environmentId));
   const save = useAtomCommand(serverEnvironment.updateSettings, "model default update");
-  if (!environmentId || !settings || !instanceId || !model) return null;
+  const settings = config?.settings;
+  if (
+    !environmentId ||
+    !settings ||
+    config.environment.capabilities.modelDefaults !== true ||
+    !instanceId ||
+    !model
+  )
+    return null;
   return {
     options: resolveModelDefaultOptions(settings, { instanceId, model }, [{ instanceId, models }]),
     set: (options: ReadonlyArray<ProviderOptionSelection> | null) =>

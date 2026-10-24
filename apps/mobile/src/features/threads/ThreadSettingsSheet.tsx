@@ -673,7 +673,9 @@ function ThreadSettingsSessionProvider(
         ? resolveModelDefaultOptions(settings, displayedModelSelection, config.providers)
         : undefined,
     setModelDefault:
-      environmentId && displayedModelSelection
+      environmentId &&
+      displayedModelSelection &&
+      config?.environment.capabilities.modelDefaults === true
         ? (options) =>
             void saveModelDefault({
               environmentId,
