@@ -29,6 +29,7 @@ import {
   getProviderOptionCurrentLabel,
   getProviderOptionCurrentValue,
   getProviderOptionDescriptors,
+  resolveModelDefaultOptions,
 } from "@t3tools/shared/model";
 import { useNavigation, useRoute, type RouteProp } from "@react-navigation/native";
 import { type NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -219,6 +220,35 @@ function DisclosureRow(props: {
   );
 }
 
+function ActionRow(props: {
+  readonly label: string;
+  readonly onPress: () => void;
+  readonly disabled?: boolean;
+  readonly isLast?: boolean;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ disabled: props.disabled === true }}
+      disabled={props.disabled}
+      onPress={props.onPress}
+      className={cn(
+        "min-h-11 flex-row items-center bg-grouped-card px-4 py-2 active:bg-subtle android:min-h-14",
+        !props.isLast && "border-b border-border-subtle",
+      )}
+    >
+      <Text
+        className={cn(
+          "text-sm font-t3-medium",
+          props.disabled ? "text-foreground-muted" : "text-foreground",
+        )}
+      >
+        {props.label}
+      </Text>
+    </Pressable>
+  );
+}
+
 function SwitchRow(props: {
   readonly label: string;
   readonly value: boolean;
@@ -322,6 +352,10 @@ type ThreadSettingsSessionValue = {
   readonly promptTraits: ReturnType<typeof getPromptControlledTraits>;
   readonly displayedModelSelection: ModelSelection | null;
   readonly reportedModelSelection: ModelSelection | null;
+  readonly modelDefaultOptions: ReadonlyArray<ProviderOptionSelection> | undefined;
+  readonly setModelDefault:
+    | ((options: ReadonlyArray<ProviderOptionSelection> | null) => void)
+    | null;
   readonly providerExpansionOverrides: ReadonlySet<string>;
   readonly hasLegacyModels: boolean;
   readonly pendingModel: ModelOption | null;
@@ -380,6 +414,7 @@ function ThreadSettingsSessionProvider(
     favorites: legacyFavorites,
   }).favorites;
   const saveSettings = useAtomCommand(serverEnvironment.updateSettings, "model favorites update");
+  const saveModelDefault = useAtomCommand(serverEnvironment.updateSettings, "model default update");
   useEffect(() => {
     if (
       !props.environmentId ||
@@ -616,8 +651,10 @@ function ThreadSettingsSessionProvider(
     );
   };
 
+  const displayedModelSelection = pendingModel?.selection ?? props.selectedModel;
+  const environmentId = props.environmentId;
   const value = {
-    environmentId: props.environmentId,
+    environmentId,
     providerInstanceId: props.providerInstanceId,
     providerGroups,
     manageHidden,
@@ -629,8 +666,30 @@ function ThreadSettingsSessionProvider(
     onUpdateRuntimeMode: props.onUpdateRuntimeMode,
     displayedDescriptors,
     promptTraits,
-    displayedModelSelection: pendingModel?.selection ?? props.selectedModel,
+    displayedModelSelection,
     reportedModelSelection: pendingModel ? null : (props.reportedModelSelection ?? null),
+    modelDefaultOptions:
+      settings && config && displayedModelSelection
+        ? resolveModelDefaultOptions(settings, displayedModelSelection, config.providers)
+        : undefined,
+    setModelDefault:
+      environmentId && displayedModelSelection
+        ? (options) =>
+            void saveModelDefault({
+              environmentId,
+              input: {
+                patch: {
+                  setModelDefaults: [
+                    {
+                      provider: displayedModelSelection.instanceId,
+                      model: displayedModelSelection.model,
+                      options,
+                    },
+                  ],
+                },
+              },
+            })
+        : null,
     favoriteKeys,
     favoritesLoaded,
     providerExpansionOverrides,
@@ -915,6 +974,30 @@ function ThreadSettingsOptionsItem(props: {
           />
         </Animated.View>
       </Animated.View>
+
+      {session.setModelDefault ? (
+        <View className="mx-4 mt-3 overflow-hidden rounded-2xl bg-grouped-card">
+          <ActionRow
+            label="Set as default for new threads"
+            disabled={
+              session.modelDefaultOptions !== undefined &&
+              JSON.stringify(session.modelDefaultOptions) ===
+                JSON.stringify(session.displayedModelSelection?.options ?? [])
+            }
+            isLast={session.modelDefaultOptions === undefined}
+            onPress={() =>
+              session.setModelDefault?.(session.displayedModelSelection?.options ?? [])
+            }
+          />
+          {session.modelDefaultOptions !== undefined ? (
+            <ActionRow
+              isLast
+              label="Clear default"
+              onPress={() => session.setModelDefault?.(null)}
+            />
+          ) : null}
+        </View>
+      ) : null}
 
       <Text className="px-5 pb-2 pt-7 text-sm font-t3-medium text-foreground-muted">Catalog</Text>
       <View className="mx-4 overflow-hidden rounded-2xl bg-grouped-card">

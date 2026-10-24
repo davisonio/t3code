@@ -8,6 +8,7 @@ import {
   ULTRATHINK_PROMPT_PREFIX,
 } from "@t3tools/client-runtime/model-traits";
 import {
+  type EnvironmentId,
   type ModelSelection,
   type ProviderDriverKind,
   type ProviderInstanceId,
@@ -28,6 +29,7 @@ import { BrainIcon } from "lucide-react";
 import {
   Menu,
   MenuGroup,
+  MenuItem,
   MenuPopup,
   MenuRadioGroup,
   MenuRadioItem,
@@ -35,6 +37,7 @@ import {
   MenuTrigger,
 } from "../ui/menu";
 import { useComposerDraftStore, DraftId } from "../../composerDraftStore";
+import { useModelDefault } from "../../hooks/useSettings";
 import { getProviderModelCapabilities } from "../../providerModels";
 import { cn } from "~/lib/utils";
 import { Badge } from "../ui/badge";
@@ -324,6 +327,8 @@ export interface TraitsMenuContentProps {
   planModeEnabled: boolean;
   triggerClassName?: string;
   isComposerOwned?: boolean;
+  /** Offers saving these options as the model's default for new threads on this environment. */
+  modelDefaultEnvironmentId?: EnvironmentId;
 }
 
 export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
@@ -337,10 +342,17 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
   reportedModelSelection,
   allowPromptInjectedEffort = true,
   planModeEnabled,
+  modelDefaultEnvironmentId,
   ...persistence
 }: TraitsMenuContentProps & TraitsPersistence) {
   const modelSelection =
     instanceId && model ? { instanceId, model, options: modelOptions ?? [] } : null;
+  const modelDefault = useModelDefault({
+    environmentId: modelDefaultEnvironmentId ?? null,
+    instanceId: instanceId ?? null,
+    model: model ?? null,
+    models,
+  });
   const setProviderModelOptions = useComposerDraftStore((store) => store.setProviderModelOptions);
   const updateModelOptions = (nextOptions: ProviderOptions | undefined) => {
     if ("onModelOptionsChange" in persistence) {
@@ -430,6 +442,9 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
           ultrathinkPromptControlled && descriptor.id === primarySelectDescriptor?.id
             ? "ultrathink"
             : (getDescriptorStringValue(descriptor, modelSelection, reportedModelSelection) ?? "");
+        const savedDefaultValue = modelDefault?.options?.find(
+          (option) => option.id === descriptor.id,
+        )?.value;
 
         return (
           <div key={descriptor.id}>
@@ -461,7 +476,13 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
                     <span className="flex w-full min-w-0 flex-col">
                       <span className="flex min-w-0 items-center gap-1">
                         <span className="min-w-0 truncate">{option.label}</span>
-                        {option.isDefault ? <DefaultBadge /> : null}
+                        {(
+                          savedDefaultValue === undefined
+                            ? option.isDefault
+                            : option.id === savedDefaultValue
+                        ) ? (
+                          <DefaultBadge />
+                        ) : null}
                       </span>
                       {option.description ? (
                         <span className="max-w-56 text-pretty text-muted-foreground/80 text-xs">
@@ -506,6 +527,25 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
           </div>
         );
       })}
+      {modelDefault ? (
+        <>
+          <MenuDivider />
+          <MenuGroup>
+            <MenuItem
+              disabled={
+                modelDefault.options !== undefined &&
+                JSON.stringify(modelDefault.options) === JSON.stringify(modelOptions ?? [])
+              }
+              onClick={() => void modelDefault.set(modelOptions ?? [])}
+            >
+              Set as default for new threads
+            </MenuItem>
+            {modelDefault.options !== undefined ? (
+              <MenuItem onClick={() => void modelDefault.set(null)}>Clear default</MenuItem>
+            ) : null}
+          </MenuGroup>
+        </>
+      ) : null}
     </>
   );
 });

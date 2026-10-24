@@ -140,6 +140,7 @@ export function ComposerControlsBar(props: {
     promptUltrathink,
     onPromptEdit,
     planModeEnabled,
+    modelDefaultEnvironmentId: environmentId,
   });
   const providerTraitsPickerInput = {
     provider: selectedProvider,
@@ -154,6 +155,7 @@ export function ComposerControlsBar(props: {
     onPromptEdit,
     planModeEnabled,
     isComposerOwned: true,
+    modelDefaultEnvironmentId: environmentId,
   } satisfies Parameters<typeof renderProviderTraitsPicker>[0];
   const providerTraitsPicker = renderProviderTraitsPicker(providerTraitsPickerInput);
   const restingProviderTraitsPicker = renderProviderTraitsPicker({
