@@ -571,6 +571,166 @@ describe("mobile model options", () => {
     ).toBeNull();
   });
 
+  describe("new task model defaults", () => {
+    const codex = ProviderInstanceId.make("codex");
+    const sticky = {
+      instanceId: codex,
+      model: "gpt-test",
+      options: [{ id: "fastMode", value: false }],
+    };
+    const providers = [
+      {
+        instanceId: codex,
+        driver: "codex",
+        displayName: "Codex",
+        enabled: true,
+        installed: true,
+        auth: { status: "authenticated" },
+        models: [
+          {
+            slug: "gpt-test",
+            name: "GPT Test",
+            isCustom: false,
+            capabilities: {
+              optionDescriptors: [
+                {
+                  id: "effort",
+                  label: "Effort",
+                  type: "select",
+                  options: [
+                    { id: "low", label: "Low" },
+                    { id: "medium", label: "Medium" },
+                    { id: "high", label: "High" },
+                    { id: "max", label: "Max" },
+                  ],
+                  currentValue: "medium",
+                },
+                { id: "fastMode", label: "Fast mode", type: "boolean", currentValue: false },
+              ],
+            },
+          },
+        ],
+      },
+    ] as unknown as ServerConfig["providers"];
+    const modelDefaults = {
+      [codex]: { "gpt-test": { options: [{ id: "effort", value: "high" }] } },
+    };
+    const projectSettings = (
+      source: "environment" | "project",
+      defaultModelSelection: ModelSelection | null,
+      stored: typeof modelDefaults = modelDefaults,
+    ) => ({
+      settings: { defaultModelSelection, modelDefaults: stored },
+      sources: { defaultModelSelection: source },
+    });
+    const projectDefault = {
+      instanceId: codex,
+      model: "gpt-test",
+      options: [{ id: "fastMode", value: true }],
+    };
+
+    it.each([
+      {
+        name: "uses the model default instead of the sticky selection's options",
+        draftSelection: null,
+        projectDefaultSelection: null,
+        projectSettings: projectSettings("environment", null),
+        expectedOptions: [{ id: "effort", value: "high" }],
+      },
+      {
+        name: "keeps the options picked for this task over the model default",
+        draftSelection: { ...sticky, options: [{ id: "effort", value: "medium" }] },
+        projectDefaultSelection: null,
+        projectSettings: projectSettings("environment", null),
+        expectedOptions: [{ id: "effort", value: "medium" }],
+      },
+      {
+        name: "keeps the project's own default options over the model default",
+        draftSelection: null,
+        projectDefaultSelection: projectDefault,
+        projectSettings: projectSettings("project", projectDefault),
+        expectedOptions: [{ id: "fastMode", value: true }],
+      },
+      {
+        name: "uses the model default over environment-wide default options",
+        draftSelection: null,
+        projectDefaultSelection: projectDefault,
+        projectSettings: projectSettings("environment", projectDefault),
+        expectedOptions: [{ id: "effort", value: "high" }],
+      },
+    ])("$name", ({ draftSelection, projectDefaultSelection, projectSettings, expectedOptions }) => {
+      expect(
+        resolveNewTaskModelSelection({
+          draftSelection,
+          projectDefaultSelection,
+          stickySelection: sticky,
+          modelOptions: [],
+          projectSettings,
+          providers,
+        }),
+      ).toEqual({ instanceId: codex, model: "gpt-test", options: expectedOptions });
+    });
+
+    it("drops model default options the model does not offer and keeps the valid ones", () => {
+      const stored = {
+        [codex]: {
+          "gpt-test": {
+            options: [
+              { id: "effort", value: "turbo" },
+              { id: "fastMode", value: "yes" },
+              { id: "verbosity", value: "low" },
+              { id: "effort", value: "high" },
+              { id: "fastMode", value: true },
+            ],
+          },
+        },
+      };
+
+      expect(
+        resolveNewTaskModelSelection({
+          draftSelection: null,
+          projectDefaultSelection: null,
+          stickySelection: sticky,
+          modelOptions: [],
+          projectSettings: projectSettings("environment", null, stored),
+          providers,
+        }),
+      ).toEqual({
+        instanceId: codex,
+        model: "gpt-test",
+        options: [
+          { id: "effort", value: "high" },
+          { id: "fastMode", value: true },
+        ],
+      });
+    });
+
+    it.each([
+      {
+        name: "no model default is stored",
+        inputs: { projectSettings: projectSettings("environment", null, {}), providers },
+      },
+      {
+        name: "projectSettings is omitted",
+        inputs: { providers },
+      },
+      {
+        name: "providers is omitted",
+        inputs: { projectSettings: projectSettings("environment", null) },
+      },
+    ])("keeps the sticky selection when $name", ({ inputs }) => {
+      expect(
+        resolveNewTaskModelSelection({
+          draftSelection: null,
+          projectDefaultSelection: null,
+          stickySelection: sticky,
+          modelOptions: [],
+          ...inputs,
+        }),
+      ).toEqual(sticky);
+    });
+  });
+
   describe("project-aware enablement", () => {
     const projectId = ProjectId.make("project-a");
     const instanceId = ProviderInstanceId.make("codex_work");
