@@ -25,6 +25,7 @@ import {
   renderProviderTraitsPicker,
 } from "./composerProviderState";
 import type { useComposerProviderModel } from "./useComposerProviderModel";
+import { useModelDefault } from "../../hooks/useModelDefault";
 
 /**
  * The composer footer controls: model picker, traits, mode controls and the overflow menu for
@@ -128,6 +129,12 @@ export function ComposerControlsBar(props: {
     modelPickerIconClassName,
     getModelDisabledReason,
   } = props;
+  const modelDefault = useModelDefault({
+    environmentId,
+    instanceId: selectedInstanceId,
+    model: selectedModel,
+    models: selectedProviderModels,
+  });
   const providerTraitsMenuContent = renderProviderTraitsMenuContent({
     provider: selectedProvider,
     instanceId: selectedInstanceId,
@@ -140,7 +147,7 @@ export function ComposerControlsBar(props: {
     promptUltrathink,
     onPromptEdit,
     planModeEnabled,
-    modelDefaultEnvironmentId: environmentId,
+    modelDefault,
   });
   const providerTraitsPickerInput = {
     provider: selectedProvider,
@@ -155,7 +162,7 @@ export function ComposerControlsBar(props: {
     onPromptEdit,
     planModeEnabled,
     isComposerOwned: true,
-    modelDefaultEnvironmentId: environmentId,
+    modelDefault,
   } satisfies Parameters<typeof renderProviderTraitsPicker>[0];
   const providerTraitsPicker = renderProviderTraitsPicker(providerTraitsPickerInput);
   const restingProviderTraitsPicker = renderProviderTraitsPicker({

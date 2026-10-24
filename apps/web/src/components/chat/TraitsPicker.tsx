@@ -8,7 +8,6 @@ import {
   ULTRATHINK_PROMPT_PREFIX,
 } from "@t3tools/client-runtime/model-traits";
 import {
-  type EnvironmentId,
   type ModelSelection,
   type ProviderDriverKind,
   type ProviderInstanceId,
@@ -37,7 +36,7 @@ import {
   MenuTrigger,
 } from "../ui/menu";
 import { useComposerDraftStore, DraftId } from "../../composerDraftStore";
-import { useModelDefault } from "../../hooks/useSettings";
+import type { useModelDefault } from "../../hooks/useModelDefault";
 import { getProviderModelCapabilities } from "../../providerModels";
 import { cn } from "~/lib/utils";
 import { Badge } from "../ui/badge";
@@ -327,8 +326,8 @@ export interface TraitsMenuContentProps {
   planModeEnabled: boolean;
   triggerClassName?: string;
   isComposerOwned?: boolean;
-  /** Offers saving these options as the model's default for new threads on this environment. */
-  modelDefaultEnvironmentId?: EnvironmentId;
+  /** Offers saving these options as the model's default for new threads. */
+  modelDefault?: ReturnType<typeof useModelDefault>;
 }
 
 export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
@@ -342,17 +341,11 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
   reportedModelSelection,
   allowPromptInjectedEffort = true,
   planModeEnabled,
-  modelDefaultEnvironmentId,
+  modelDefault,
   ...persistence
 }: TraitsMenuContentProps & TraitsPersistence) {
   const modelSelection =
     instanceId && model ? { instanceId, model, options: modelOptions ?? [] } : null;
-  const modelDefault = useModelDefault({
-    environmentId: modelDefaultEnvironmentId ?? null,
-    instanceId: instanceId ?? null,
-    model: model ?? null,
-    models,
-  });
   const setProviderModelOptions = useComposerDraftStore((store) => store.setProviderModelOptions);
   const updateModelOptions = (nextOptions: ProviderOptions | undefined) => {
     if ("onModelOptionsChange" in persistence) {

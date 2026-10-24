@@ -8,8 +8,6 @@ import {
   type EnvironmentId,
   type ProviderInstanceMutation,
   type ProviderInstanceId,
-  type ProviderOptionSelection,
-  type ServerProviderModel,
   ServerSettings,
   type ServerSettingsPatch,
   sessionGrantsScope,
@@ -43,7 +41,6 @@ import {
   modelPreferencesMigrationPatch,
   resolveModelPreferences,
 } from "@t3tools/shared/serverSettings";
-import { resolveModelDefaultOptions } from "@t3tools/shared/model";
 import * as Equal from "effect/Equal";
 import * as Struct from "effect/Struct";
 import * as Option from "effect/Option";
@@ -521,34 +518,6 @@ export function useToggleEnvironmentModelFavorite(environmentId: EnvironmentId |
 }
 
 const noEnvironmentSettingsAtom = Atom.make<ServerSettings | null>(null);
-
-export function useModelDefault(input: {
-  readonly environmentId: EnvironmentId | null;
-  readonly instanceId: ProviderInstanceId | null;
-  readonly model: string | null;
-  readonly models: ReadonlyArray<ServerProviderModel>;
-}) {
-  const { environmentId, instanceId, model, models } = input;
-  const config = useAtomValue(serverEnvironment.configValueAtom(environmentId));
-  const save = useAtomCommand(serverEnvironment.updateSettings, "model default update");
-  const settings = config?.settings;
-  if (
-    !environmentId ||
-    !settings ||
-    config.environment.capabilities.modelDefaults !== true ||
-    !instanceId ||
-    !model
-  )
-    return null;
-  return {
-    options: resolveModelDefaultOptions(settings, { instanceId, model }, [{ instanceId, models }]),
-    set: (options: ReadonlyArray<ProviderOptionSelection> | null) =>
-      save({
-        environmentId,
-        input: { patch: { setModelDefaults: [{ provider: instanceId, model, options }] } },
-      }),
-  };
-}
 
 export function useEnvironmentModelPreferences(environmentId: EnvironmentId | null) {
   const settings = useAtomValue(
