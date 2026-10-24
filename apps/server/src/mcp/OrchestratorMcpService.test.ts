@@ -2512,7 +2512,6 @@ describe("OrchestratorMcpService provider resolution", () => {
       result: null,
     });
 
-    // Returns the model selection the delegated child thread is started with.
     const delegatedSelection = (
       target: Record<string, unknown>,
       settings: Parameters<typeof ServerSettings.layerTest>[0] = {},

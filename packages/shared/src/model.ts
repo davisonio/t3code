@@ -512,7 +512,7 @@ export function resolveModelDefaultOptions(
     .find((provider) => provider.instanceId === selection.instanceId)
     ?.models.find((model) => model.slug === selection.model)?.capabilities?.optionDescriptors;
   const kept = new Set<string>();
-  return stored.filter((option) => {
+  const valid = stored.filter((option) => {
     const descriptor = descriptors?.find((candidate) => candidate.id === option.id);
     if (
       descriptor === undefined ||
@@ -527,6 +527,9 @@ export function resolveModelDefaultOptions(
     kept.add(option.id);
     return true;
   });
+  // A default whose every option the model has since dropped no longer says anything; an
+  // empty one saved on purpose still means "use the provider's own defaults".
+  return stored.length > 0 && valid.length === 0 ? undefined : valid;
 }
 
 export function withModelDefaultOptions(

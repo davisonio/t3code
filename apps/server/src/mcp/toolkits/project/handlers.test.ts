@@ -34,7 +34,6 @@ import { ProjectToolkit } from "./tools.ts";
 
 const claudeInstanceId = ProviderInstanceId.make("claudeAgent");
 
-// Opus offers a select (reasoningEffort) and a boolean (fastMode) option.
 const claudeProviders: ReadonlyArray<ServerProvider> = [
   {
     instanceId: claudeInstanceId,
@@ -439,12 +438,15 @@ it.effect.each([
       })
       .pipe(Stream.unwrap, Stream.runCollect, Effect.provide(dependencies));
 
-    expect(result.at(-1)?.result).toMatchObject({ projectId });
-    expect(launched).toHaveLength(1);
-    expect(launched[0]?.modelSelection).toMatchObject({
-      instanceId: claudeInstanceId,
-      model: "claude-opus",
+    const launchedThread = result.at(-1)?.result;
+    expect(launchedThread).toMatchObject({
+      projectId,
+      modelSelection: { instanceId: claudeInstanceId, model: "claude-opus" },
     });
-    expect(launched[0]?.modelSelection.options ?? []).toEqual(row.expected);
+    const options =
+      launchedThread && "modelSelection" in launchedThread
+        ? launchedThread.modelSelection.options
+        : undefined;
+    expect(options ?? []).toEqual(row.expected);
   }),
 );

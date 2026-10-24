@@ -618,7 +618,7 @@ describe("mobile model options", () => {
     const projectSettings = (
       source: "environment" | "project",
       defaultModelSelection: ModelSelection | null,
-      stored: typeof modelDefaults = modelDefaults,
+      stored: ServerSettings["modelDefaults"] = modelDefaults,
     ) => ({
       settings: { defaultModelSelection, modelDefaults: stored },
       sources: { defaultModelSelection: source },

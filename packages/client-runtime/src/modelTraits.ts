@@ -2,9 +2,13 @@ import type {
   ModelSelection,
   ProviderDriverKind,
   ProviderOptionDescriptor,
+  ProviderOptionSelection,
+  ServerConfig,
+  ServerSettingsPatch,
 } from "@t3tools/contracts";
 import {
   applyClaudePromptEffortPrefix,
+  resolveModelDefaultOptions,
   buildProviderOptionSelectionsFromDescriptors,
   getProviderOptionCurrentLabel,
   getProviderOptionCurrentValue,
@@ -13,6 +17,26 @@ import {
 import { REASONING_EFFORT_OPTION_IDS } from "./state/threadExecution.ts";
 
 export const ULTRATHINK_PROMPT_PREFIX = "Ultrathink:\n";
+
+/** Null when the environment cannot store a default, so clients hide the controls. */
+export function readModelDefault(
+  config: Pick<ServerConfig, "environment" | "providers" | "settings"> | null | undefined,
+  selection: Pick<ModelSelection, "instanceId" | "model"> | null | undefined,
+): { readonly options: ReadonlyArray<ProviderOptionSelection> | undefined } | null {
+  if (!config?.settings || !selection || config.environment.capabilities.modelDefaults !== true) {
+    return null;
+  }
+  return { options: resolveModelDefaultOptions(config.settings, selection, config.providers) };
+}
+
+export function modelDefaultPatch(
+  selection: Pick<ModelSelection, "instanceId" | "model">,
+  options: ReadonlyArray<ProviderOptionSelection> | null,
+): ServerSettingsPatch {
+  return {
+    setModelDefaults: [{ provider: selection.instanceId, model: selection.model, options }],
+  };
+}
 
 export const REASONING_SELECT_DESCRIPTOR_IDS: ReadonlySet<string> = new Set([
   ...REASONING_EFFORT_OPTION_IDS,

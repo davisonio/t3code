@@ -133,7 +133,6 @@ export function ComposerControlsBar(props: {
     environmentId,
     instanceId: selectedInstanceId,
     model: selectedModel,
-    models: selectedProviderModels,
   });
   const providerTraitsMenuContent = renderProviderTraitsMenuContent({
     provider: selectedProvider,

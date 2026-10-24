@@ -1,6 +1,8 @@
 import {
   getPromptControlledTraits,
   getTraitSelectChange,
+  modelDefaultPatch,
+  readModelDefault,
 } from "@t3tools/client-runtime/model-traits";
 import { useEnvironmentServerConfig } from "../../state/entities";
 import { SheetHeader } from "../../components/ui/SheetHeader";
@@ -29,7 +31,6 @@ import {
   getProviderOptionCurrentLabel,
   getProviderOptionCurrentValue,
   getProviderOptionDescriptors,
-  resolveModelDefaultOptions,
 } from "@t3tools/shared/model";
 import { useNavigation, useRoute, type RouteProp } from "@react-navigation/native";
 import { type NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -652,6 +653,7 @@ function ThreadSettingsSessionProvider(
   };
 
   const displayedModelSelection = pendingModel?.selection ?? props.selectedModel;
+  const modelDefault = readModelDefault(config, displayedModelSelection);
   const environmentId = props.environmentId;
   const value = {
     environmentId,
@@ -668,28 +670,13 @@ function ThreadSettingsSessionProvider(
     promptTraits,
     displayedModelSelection,
     reportedModelSelection: pendingModel ? null : (props.reportedModelSelection ?? null),
-    modelDefaultOptions:
-      settings && config && displayedModelSelection
-        ? resolveModelDefaultOptions(settings, displayedModelSelection, config.providers)
-        : undefined,
+    modelDefaultOptions: modelDefault?.options,
     setModelDefault:
-      environmentId &&
-      displayedModelSelection &&
-      config?.environment.capabilities.modelDefaults === true
+      environmentId && displayedModelSelection && modelDefault
         ? (options) =>
             void saveModelDefault({
               environmentId,
-              input: {
-                patch: {
-                  setModelDefaults: [
-                    {
-                      provider: displayedModelSelection.instanceId,
-                      model: displayedModelSelection.model,
-                      options,
-                    },
-                  ],
-                },
-              },
+              input: { patch: modelDefaultPatch(displayedModelSelection, options) },
             })
         : null,
     favoriteKeys,
